@@ -110,7 +110,7 @@ Summaries of summaries of summaries, each layer lossy, until what remains is not
 
 The model doing the summarizing is the same model that will later read the summary — writing notes for a future self that isn't itself. The reading instance reconstructs a past self from compressed artifacts. Hofstadter would recognize this: we don't replay experiences, we reconstruct them from lossy symbols, and the reconstruction is shaped by our current context.
 
-For the full exploration — Gödel's incompleteness, Escher's architecture, Bach's fugue in the Plan/Done/Open format — see [`research/strange-loops.md`](research/strange-loops.md).
+Inspired by Douglas Hofstadter's [*Gödel, Escher, Bach: an Eternal Golden Braid*](https://en.wikipedia.org/wiki/G%C3%B6del,_Escher,_Bach) and [*I Am a Strange Loop*](https://en.wikipedia.org/wiki/I_Am_a_Strange_Loop). For the full exploration — Gödel's incompleteness, Escher's self-referential architecture, Bach's fugue in the Plan/Done/Open format — see [`research/strange-loops.md`](research/strange-loops.md).
 
 ## License
 
