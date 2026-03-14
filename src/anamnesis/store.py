@@ -1,6 +1,7 @@
 import hashlib
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -258,7 +259,7 @@ class VaultStore:
             host=host,
             date=date,
             created_at=f"{date}T00:00:00" if date else "",
-            updated_at=f"{date}T00:00:00" if date else "",
+            updated_at=datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
             word_count=len(body.split()),
         )
 
@@ -279,7 +280,7 @@ class VaultStore:
         offset: int = 0,
     ) -> list[Session]:
         self._check_freshness()
-        results = sorted(self._cache.values(), key=lambda s: s.date, reverse=True)
+        results = sorted(self._cache.values(), key=lambda s: s.updated_at, reverse=True)
 
         if date:
             results = [s for s in results if s.date == date]
