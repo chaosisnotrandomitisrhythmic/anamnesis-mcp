@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "anamnesis": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/anamnesis-mcp", "run", "anamnesis"]
+    }
+  }
+}

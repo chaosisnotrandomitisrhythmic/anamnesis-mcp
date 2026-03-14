@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /path/to/anamnesis-mcp/scripts/session-summary.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}
