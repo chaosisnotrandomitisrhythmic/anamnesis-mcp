@@ -1,5 +1,9 @@
 # Anamnesis MCP
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/chaosisnotrandomitisrhythmic/anamnesis-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/chaosisnotrandomitisrhythmic/anamnesis-mcp/actions/workflows/ci.yml)
+
 > *"All inquiry and all learning is but recollection."* — Plato, *Meno* 81d
 
 Persistent session memory for Claude Code.
@@ -8,9 +12,25 @@ Claude Code already has persistence primitives — `CLAUDE.md` for project conte
 
 Anamnesis bridges that gap. It logs each session as structured markdown — **Plan**, **Done**, **Open** — and serves it back via an [MCP](https://modelcontextprotocol.io/) server. Future sessions can search and cross-reference the past.
 
-## Quick Start
+## Features
 
-Requires Python 3.13+, [uv](https://docs.astral.sh/uv/), and an `ANTHROPIC_API_KEY`.
+- **BM25 full-text search** over session logs with date/tag/host filtering
+- **Structured entry search** — find Plan/Done/Open items across all sessions
+- **Obsidian-first** — plain markdown vault, works with graph view and Obsidian Sync
+- **`save_session` tool** — capture sessions from any MCP client (Cursor, VS Code, etc.)
+- **Auto session capture** — SessionEnd hook summarizes conversations automatically
+- **Corpus analytics** — word counts, tag distributions, open item tracking (Zeigarnik stats)
+- **Section extraction** — heading-level retrieval and cross-session section search
+- **No database** — just markdown files in a directory, audit/edit/delete anytime
+
+## Requirements
+
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/) (package manager)
+- [Claude Code](https://claude.ai/code) (or any MCP client)
+- `ANTHROPIC_API_KEY` (only needed for the optional SessionEnd hook)
+
+## Quick Start
 
 ```bash
 git clone https://github.com/chaosisnotrandomitisrhythmic/anamnesis-mcp.git
@@ -78,6 +98,16 @@ Summary paragraph describing the full arc of work.
 ```
 
 Works with any markdown viewer. If you use [Obsidian](https://obsidian.md/), point `ANAMNESIS_VAULT` at a folder inside your vault for graph view and sync.
+
+## Uninstallation
+
+1. Remove the `anamnesis` entry from `mcpServers` in `~/.claude.json`
+2. Remove the SessionEnd hook from `~/.claude/settings.json` (if configured)
+3. Optionally delete the vault directory (`~/Documents/Anamnesis` by default)
+4. Optionally remove the skill: `rm -rf ~/.claude/skills/anamnesis/`
+5. Remove the repo: `rm -rf /path/to/anamnesis-mcp`
+
+Your session logs in the vault are plain markdown — keep them, move them, or delete them as you see fit.
 
 ---
 

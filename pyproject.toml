@@ -30,6 +30,9 @@ Issues = "https://github.com/chaosisnotrandomitisrhythmic/anamnesis-mcp/issues"
 [project.scripts]
 anamnesis = "anamnesis:run_server"
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/anamnesis"]
 
