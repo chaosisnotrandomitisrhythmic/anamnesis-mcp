@@ -1,6 +1,11 @@
 import hashlib
+import json
 import os
+import platform
 import re
+import socket
+import subprocess
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -11,6 +16,45 @@ from .models import Session, LogEntry
 from . import get_logger
 
 logger = get_logger(__name__)
+
+def detect_claude_session_id() -> str:
+    """Auto-detect the current Claude Code session ID.
+
+    Walks up the process tree checking ~/.claude/sessions/{pid}.json
+    since the MCP server is a child process of Claude Code.
+    """
+    sessions_dir = Path.home() / ".claude" / "sessions"
+    if not sessions_dir.exists():
+        return ""
+
+    pid = os.getpid()
+    for _ in range(5):
+        session_file = sessions_dir / f"{pid}.json"
+        if session_file.exists():
+            try:
+                data = json.loads(session_file.read_text())
+                session_id = data.get("sessionId", "")
+                if session_id:
+                    logger.info(f"Detected Claude session: {session_id} (pid {pid})")
+                    return session_id
+            except (json.JSONDecodeError, OSError):
+                pass
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "ppid=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            ppid = int(result.stdout.strip())
+            if ppid <= 1:
+                break
+            pid = ppid
+        except Exception:
+            break
+
+    return ""
+
 
 DEFAULT_VAULT = Path.home() / "Documents" / "Anamnesis"
 
@@ -115,7 +159,7 @@ class VaultStore:
     """Reads session .md files directly from the vault directory.
 
     Auto-refreshes when files change (mtime-based).
-    Read-only — the SessionEnd hook is the only writer.
+    Writers: SessionEnd hook (Claude Code) and save_session tool (Cursor/VS Code).
     """
 
     def __init__(self, vault_path: Path | None = None):
@@ -290,6 +334,173 @@ class VaultStore:
             results = [s for s in results if s.host == host]
 
         return results[offset : offset + limit]
+
+    def save_session(
+        self,
+        title: str,
+        summary: str,
+        plan: str,
+        done: str,
+        open_items: str = "",
+        cwd: str = "",
+        tags: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> dict:
+        """Write or update a session log file in the vault.
+
+        If session_id matches an existing file, appends a new log entry
+        and updates the summary. Otherwise creates a new file.
+
+        Returns dict with keys: filename, session_id, created (bool).
+        """
+        now = datetime.now()
+        host = socket.gethostname()
+        date = now.strftime("%Y-%m-%d")
+        timestamp = now.strftime("%Y-%m-%d %H:%M")
+        system = f"{platform.system()} {platform.machine()}"
+
+        # Auto-detect session_id if not provided
+        if not session_id:
+            session_id = detect_claude_session_id()
+            if session_id:
+                logger.info(f"Auto-detected session_id: {session_id}")
+
+        # Try to find existing file for this session_id
+        existing_path = None
+        if session_id:
+            existing_path = self._find_session_file(session_id)
+
+        if existing_path and existing_path.exists():
+            # --- UPDATE existing file ---
+            content = existing_path.read_text()
+
+            # Strip frontmatter to get body
+            body = content
+            fm_block = ""
+            if content.startswith("---\n"):
+                end = content.find("\n---\n", 4)
+                if end != -1:
+                    fm_block = content[: end + 5]
+                    body = content[end + 5 :].lstrip("\n")
+
+            # Split body into: header_section --- log_entries --- footer
+            parts = body.split("\n---\n")
+
+            # Rebuild header with updated summary
+            title_line = ""
+            for line in body.split("\n"):
+                if line.startswith("# "):
+                    title_line = line
+                    break
+            if not title_line:
+                title_line = f"# {title}"
+
+            # Extract existing log entries
+            existing_entries = ""
+            if len(parts) >= 3:
+                existing_entries = "\n---\n".join(parts[1:-1]).strip()
+            elif len(parts) == 2 and "## " in parts[0]:
+                idx = parts[0].index("## ")
+                existing_entries = parts[0][idx:].strip()
+
+            # Build new entry
+            new_entry_lines = [
+                f"## {timestamp}",
+                f"- **Plan**: {plan}",
+                f"- **Done**: {done}",
+            ]
+            if open_items:
+                new_entry_lines.append(f"- **Open**: {open_items}")
+            new_entry = "\n".join(new_entry_lines)
+
+            # Reassemble
+            sections = [title_line, ""]
+            if summary:
+                sections.append(summary)
+            sections.extend(["", "---", ""])
+            if existing_entries:
+                sections.append(existing_entries)
+                sections.append("")
+            sections.append(new_entry)
+            sections.extend(
+                [
+                    "",
+                    "---",
+                    f"*Session: `{session_id}` | Updated: {timestamp} | Host: {host} ({system})*",
+                    "",
+                ]
+            )
+
+            updated = fm_block + "\n".join(sections)
+            existing_path.write_text(updated)
+            logger.info(f"Updated session: {existing_path.name} ({len(updated)} bytes)")
+            return {
+                "filename": existing_path.name,
+                "session_id": session_id,
+                "created": False,
+            }
+
+        else:
+            # --- CREATE new file ---
+            if not session_id:
+                session_id = str(uuid.uuid4())
+
+            fm = (
+                "---\n"
+                f'session_id: "{session_id}"\n'
+                f'date: "{date}"\n'
+                f'host: "{host}"\n'
+                f'cwd: "{cwd}"\n'
+                f"tags: {json.dumps(tags or [])}\n"
+                "---\n\n"
+            )
+
+            sections = [f"# {title}", ""]
+            if summary:
+                sections.append(summary)
+            sections.extend(["", "---", ""])
+
+            sections.append(f"## {timestamp}")
+            sections.append(f"- **Plan**: {plan}")
+            sections.append(f"- **Done**: {done}")
+            if open_items:
+                sections.append(f"- **Open**: {open_items}")
+
+            sections.extend(
+                [
+                    "",
+                    "---",
+                    f"*Session: `{session_id}` | Updated: {timestamp} | Host: {host} ({system})*",
+                    "",
+                ]
+            )
+
+            content = fm + "\n".join(sections)
+
+            slug = title.lower()
+            for ch in ":/\\?*\"<>|'(),&.!":
+                slug = slug.replace(ch, "")
+            slug = "-".join(slug.split())[:60]
+            filename = f"{now.strftime('%Y-%m-%d_%H%M')}_{slug}.md"
+
+            out_path = self._vault_path / filename
+            out_path.write_text(content)
+            logger.info(f"Created session: {filename} ({len(content)} bytes)")
+            return {"filename": filename, "session_id": session_id, "created": True}
+
+    def _find_session_file(self, session_id: str) -> Path | None:
+        """Find the vault file for a given session_id by scanning frontmatter."""
+        for path in self._vault_path.glob("*.md"):
+            try:
+                # Quick check: read first few lines for session_id
+                with open(path) as f:
+                    head = f.read(500)
+                if f'session_id: "{session_id}"' in head:
+                    return path
+            except Exception as e:
+                logger.debug(f"Could not read {path.name}: {e}")
+                continue
+        return None
 
     def get_all_tags(self) -> dict[str, int]:
         self._check_freshness()
