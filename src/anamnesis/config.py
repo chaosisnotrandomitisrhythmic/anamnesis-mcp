@@ -19,6 +19,9 @@ class ToolConfig:
         "- list_sections: List all section headings in a session\n"
         "- search_sections: Find a section type across all sessions\n"
         "\n"
+        "Write tools:\n"
+        "- save_session: Save a session log (for environments without SessionEnd hooks)\n"
+        "\n"
         "Analysis tools:\n"
         "- analyze_corpus: Get statistics about the knowledge base\n"
         "- run_analysis: Execute Python code for ad-hoc analysis (local only)\n"
@@ -212,6 +215,34 @@ class ToolConfig:
     RUN_ANALYSIS_INSTRUCTION = (
         "This is the result of ad-hoc Python analysis. "
         "Present it clearly to the user."
+    )
+
+    # save_session
+    SAVE_SESSION_DESCRIPTION = (
+        "Save a session log to the vault.\n"
+        "\n"
+        "Use this when running in an environment without SessionEnd hooks\n"
+        "(e.g. Cursor, VS Code) to capture session history before clearing.\n"
+        "\n"
+        "The calling agent should summarize the conversation into the fields below.\n"
+        "\n"
+        "Args:\n"
+        "    title: Descriptive session title (no # prefix)\n"
+        "    summary: 2-5 sentence overview of the session\n"
+        "    plan: What the user set out to do\n"
+        "    done: What was accomplished\n"
+        "    open_items: Unfinished items or next steps (optional)\n"
+        "    cwd: Working directory (optional)\n"
+        "    tags: List of tags (optional)\n"
+        "    session_id: Override auto-detected session ID (optional)\n"
+        "\n"
+        "Returns:\n"
+        "    Confirmation with the filename written"
+    )
+
+    SAVE_SESSION_INSTRUCTION = (
+        "Session saved. The file is now in the vault and will be "
+        "picked up by the search index automatically."
     )
 
     # Shared
