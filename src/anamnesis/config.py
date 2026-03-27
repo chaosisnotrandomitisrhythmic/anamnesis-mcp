@@ -234,6 +234,7 @@ class ToolConfig:
         "    open_items: Unfinished items or next steps (optional)\n"
         "    cwd: Working directory (optional)\n"
         "    tags: List of tags (optional)\n"
+        "    session_id: Override auto-detected session ID (optional)\n"
         "\n"
         "Returns:\n"
         "    Confirmation with the filename written"

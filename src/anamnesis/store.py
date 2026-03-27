@@ -451,7 +451,7 @@ class VaultStore:
                 f'date: "{date}"\n'
                 f'host: "{host}"\n'
                 f'cwd: "{cwd}"\n'
-                f"tags: {tags or []}\n"
+                f"tags: {json.dumps(tags or [])}\n"
                 "---\n\n"
             )
 
@@ -497,7 +497,8 @@ class VaultStore:
                     head = f.read(500)
                 if f'session_id: "{session_id}"' in head:
                     return path
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Could not read {path.name}: {e}")
                 continue
         return None
 
