@@ -255,6 +255,38 @@ def search_sections(
     )
 
 
+@mcp.tool(description=ToolConfig.SAVE_SESSION_DESCRIPTION)
+def save_session(
+    title: str,
+    summary: str,
+    plan: str,
+    done: str,
+    open_items: str = "",
+    cwd: str = "",
+    tags: list[str] = [],
+    session_id: Optional[str] = None,
+) -> str:
+    store = get_store()
+    result = store.save_session(
+        title=title,
+        summary=summary,
+        plan=plan,
+        done=done,
+        open_items=open_items,
+        cwd=cwd,
+        tags=tags,
+        session_id=session_id,
+    )
+
+    action = "Created" if result["created"] else "Updated"
+    return format_tool_response(
+        "save_session",
+        f'<result action="{action}" filename="{result["filename"]}" '
+        f'session_id="{result["session_id"]}" />',
+        ToolConfig.SAVE_SESSION_INSTRUCTION,
+    )
+
+
 @mcp.tool(annotations={"readOnlyHint": True}, description=ToolConfig.ANALYZE_CORPUS_DESCRIPTION)
 def analyze_corpus() -> str:
     stats = analyze_corpus_structure()

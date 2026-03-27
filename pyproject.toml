@@ -30,6 +30,9 @@ Issues = "https://github.com/chaosisnotrandomitisrhythmic/anamnesis-mcp/issues"
 [project.scripts]
 anamnesis = "anamnesis:run_server"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/anamnesis"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
