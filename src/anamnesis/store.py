@@ -13,7 +13,7 @@ from typing import Optional
 import frontmatter
 
 from .models import Session, LogEntry
-from .daily_note import append_to_daily_note, obsidian_create
+from .paths import VAULT_DIR as _DEFAULT_VAULT
 from . import get_logger
 
 logger = get_logger(__name__)
@@ -57,7 +57,7 @@ def detect_claude_session_id() -> str:
     return ""
 
 
-DEFAULT_VAULT = Path.home() / "Documents" / "Anamnesis"
+DEFAULT_VAULT = _DEFAULT_VAULT
 
 # Regex patterns for parsing markdown body
 ENTRY_HEADER = re.compile(r"^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2})")
@@ -436,19 +436,6 @@ class VaultStore:
             existing_path.write_text(updated)
             logger.info(f"Updated session: {existing_path.name} ({len(updated)} bytes)")
 
-            try:
-                append_to_daily_note(
-                    title=title_line.lstrip("# ").strip(),
-                    summary=summary,
-                    done=done,
-                    open_items=open_items,
-                    cwd=cwd,
-                    session_filename=existing_path.name,
-                    timestamp=timestamp,
-                )
-            except Exception as e:
-                logger.warning(f"Daily note append failed: {e}")
-
             return {
                 "filename": existing_path.name,
                 "session_id": session_id,
@@ -500,26 +487,8 @@ class VaultStore:
 
             out_path = self._vault_path / filename
 
-            # Try Obsidian CLI for immediate indexing, fall back to raw I/O
-            note_name = f"{self._vault_path.name}/{filename.removesuffix('.md')}"
-            cli_success = obsidian_create(note_name, content)
-            if not cli_success or not out_path.exists():
-                out_path.write_text(content)
-
+            out_path.write_text(content)
             logger.info(f"Created session: {filename} ({len(content)} bytes)")
-
-            try:
-                append_to_daily_note(
-                    title=title,
-                    summary=summary,
-                    done=done,
-                    open_items=open_items,
-                    cwd=cwd,
-                    session_filename=filename,
-                    timestamp=timestamp,
-                )
-            except Exception as e:
-                logger.warning(f"Daily note append failed: {e}")
 
             return {"filename": filename, "session_id": session_id, "created": True}
 

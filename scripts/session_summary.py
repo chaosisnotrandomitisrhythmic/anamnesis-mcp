@@ -24,24 +24,12 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-# Import shared daily note logic from the anamnesis package
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "src"))
-from anamnesis.daily_note import (
-    obsidian_cli_available,
-    obsidian_create,
-    format_daily_block,
-    append_to_daily_note,
-)
-
-VAULT_DIR = Path(
-    os.environ.get("ANAMNESIS_VAULT", str(Path.home() / "Documents" / "Anamnesis"))
-)
-INDEX_FILE = VAULT_DIR / ".session-index"
-LOG_FILE = Path.home() / ".claude" / "scripts" / "session-summary.log"
+# Import shared paths from the anamnesis package
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from anamnesis.paths import VAULT_DIR, INDEX_FILE, SESSION_SUMMARY_LOG, MODEL
 
 logging.basicConfig(
-    filename=str(LOG_FILE),
+    filename=str(SESSION_SUMMARY_LOG),
     format="[%(asctime)s] %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S%z",
     level=logging.INFO,
@@ -145,10 +133,8 @@ def call_api(system: str, user_content: str) -> str:
     if not api_key:
         raise RuntimeError("No ANTHROPIC_API_KEY found")
 
-    model = os.environ.get("ANAMNESIS_MODEL", "claude-opus-4-6")
-
     payload = json.dumps({
-        "model": model,
+        "model": MODEL,
         "max_tokens": 16000,
         "thinking": {"type": "adaptive"},
         "system": system,
@@ -177,7 +163,7 @@ def call_api(system: str, user_content: str) -> str:
     usage = data.get("usage", {})
     log.info(
         "API call: model=%s input=%s output=%s",
-        model,
+        MODEL,
         usage.get("input_tokens", "?"),
         usage.get("output_tokens", "?"),
     )
@@ -411,46 +397,14 @@ Generate the log entry."""
 
     updated = fm + "\n".join(sections)
 
-    # Write session file — CLI create for new files, raw I/O for updates and fallback
-    is_new = not (existing_file and existing_file.exists())
-    if is_new:
-        note_name = f"{VAULT_DIR.name}/{out_path.stem}"
-        cli_success = obsidian_create(note_name, updated)
-        if not cli_success or not out_path.exists():
-            out_path.write_text(updated)
-    else:
-        out_path.write_text(updated)
+    # Write session file
+    out_path.write_text(updated)
 
     # Update index
     index[session_id] = {"file": out_path.name, "offset": len(entries)}
     write_index(index)
 
     log.info("Wrote %s (%d bytes, %d transcript entries)", out_path.name, len(updated), len(entries))
-
-    # Append to daily note
-    try:
-        # Extract done/open from the new entry
-        done_text = ""
-        open_text = ""
-        for line in new_entry.split("\n"):
-            m = re.match(r"^- \*\*Done\*\*:\s*(.+)", line)
-            if m:
-                done_text = m.group(1).strip()
-            m = re.match(r"^- \*\*Open\*\*:\s*(.+)", line)
-            if m:
-                open_text = m.group(1).strip()
-
-        append_to_daily_note(
-            title=title_line.lstrip("# ").strip(),
-            summary=summary,
-            done=done_text,
-            open_items=open_text,
-            cwd=cwd,
-            session_filename=out_path.name,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
-        )
-    except Exception:
-        log.exception("Daily note append failed")
 
 
 if __name__ == "__main__":
