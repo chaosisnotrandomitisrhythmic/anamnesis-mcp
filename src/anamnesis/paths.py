@@ -1,52 +1,87 @@
-"""Centralized path configuration for Anamnesis.
-
-All file paths, directories, and environment-driven overrides live here.
-Scripts and modules import from this module instead of defining their own constants.
-"""
+"""Centralized path configuration for Anamnesis."""
 
 import os
 import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 
-# --- Vault paths ---
 
-VAULT_ROOT = Path(
-    os.environ.get("ANAMNESIS_VAULT_ROOT", str(Path.home() / "Documents" / "Anamnesis"))
-)
+@dataclass(frozen=True)
+class AnamnesisPaths:
+    """All file paths and settings, configurable via env vars."""
 
-VAULT_DIR = Path(
-    os.environ.get("ANAMNESIS_VAULT", str(VAULT_ROOT))
-)
+    vault_root: Path = field(default_factory=lambda: Path.home() / "Documents" / "Anamnesis")
+    vault_dir: Path = field(default=None)
+    daily_log_dir: Path = field(default=None)
+    model: str = "claude-opus-4-6"
+    daily_summary_hour: int = 20
+    daily_summary_minute: int = 3
+    obsidian_cli: str = field(default_factory=lambda: shutil.which("obsidian") or "obsidian")
 
-DAILY_LOG_DIR = Path(
-    os.environ.get("ANAMNESIS_DAILY_DIR", str(VAULT_ROOT / ".." / "Daily Logs"))
-)
+    def __post_init__(self):
+        if self.vault_dir is None:
+            object.__setattr__(self, "vault_dir", self.vault_root)
+        if self.daily_log_dir is None:
+            object.__setattr__(self, "daily_log_dir", self.vault_root.parent / "Daily Logs")
 
-# --- Index and log files ---
+    @classmethod
+    def from_env(cls) -> "AnamnesisPaths":
+        """Create config from environment variables."""
+        vault_root = Path(os.environ.get("ANAMNESIS_VAULT_ROOT", str(Path.home() / "Documents" / "Anamnesis")))
 
-INDEX_FILE = VAULT_DIR / ".session-index"
+        vault_dir = None
+        if "ANAMNESIS_VAULT" in os.environ:
+            vault_dir = Path(os.environ["ANAMNESIS_VAULT"])
 
-LOG_DIR = Path.home() / ".claude" / "scripts"
+        daily_log_dir = None
+        if "ANAMNESIS_DAILY_DIR" in os.environ:
+            daily_log_dir = Path(os.environ["ANAMNESIS_DAILY_DIR"])
 
-SESSION_SUMMARY_LOG = LOG_DIR / "session-summary.log"
-DAILY_SUMMARY_LOG = LOG_DIR / "daily-summary.log"
+        model = os.environ.get("ANAMNESIS_MODEL", "claude-opus-4-6")
 
-# --- Obsidian CLI ---
+        try:
+            hour = int(os.environ.get("ANAMNESIS_DAILY_HOUR", "20"))
+        except ValueError:
+            hour = 20
+        try:
+            minute = int(os.environ.get("ANAMNESIS_DAILY_MINUTE", "3"))
+        except ValueError:
+            minute = 3
 
-OBSIDIAN_CLI = shutil.which("obsidian") or os.environ.get("OBSIDIAN_CLI", "obsidian")
+        return cls(
+            vault_root=vault_root,
+            vault_dir=vault_dir,
+            daily_log_dir=daily_log_dir,
+            model=model,
+            daily_summary_hour=hour,
+            daily_summary_minute=minute,
+        )
 
-# --- API ---
+    @property
+    def index_file(self) -> Path:
+        return self.vault_dir / ".session-index"
 
-MODEL = os.environ.get("ANAMNESIS_MODEL", "claude-opus-4-6")
+    @property
+    def log_dir(self) -> Path:
+        return Path.home() / ".claude" / "scripts"
 
-# --- Cron schedule ---
+    @property
+    def session_summary_log(self) -> Path:
+        return self.log_dir / "session-summary.log"
 
-try:
-    DAILY_SUMMARY_HOUR = int(os.environ.get("ANAMNESIS_DAILY_HOUR", "20"))
-except ValueError:
-    DAILY_SUMMARY_HOUR = 20
+    @property
+    def daily_summary_log(self) -> Path:
+        return self.log_dir / "daily-summary.log"
 
-try:
-    DAILY_SUMMARY_MINUTE = int(os.environ.get("ANAMNESIS_DAILY_MINUTE", "3"))
-except ValueError:
-    DAILY_SUMMARY_MINUTE = 3
+
+config = AnamnesisPaths.from_env()
+
+# Backward-compatible constants
+VAULT_ROOT = config.vault_root
+VAULT_DIR = config.vault_dir
+DAILY_LOG_DIR = config.daily_log_dir
+INDEX_FILE = config.index_file
+SESSION_SUMMARY_LOG = config.session_summary_log
+DAILY_SUMMARY_LOG = config.daily_summary_log
+MODEL = config.model
+OBSIDIAN_CLI = config.obsidian_cli
