@@ -466,7 +466,7 @@ class VaultStore:
                 f'date: "{date}"\n'
                 f'host: "{host}"\n'
                 f'cwd: "{cwd}"\n'
-                f"tags: {tags or []}\n"
+                f"tags: {json.dumps(tags or [])}\n"
                 "---\n\n"
             )
 
@@ -502,7 +502,8 @@ class VaultStore:
 
             # Try Obsidian CLI for immediate indexing, fall back to raw I/O
             note_name = f"{self._vault_path.name}/{filename.removesuffix('.md')}"
-            if not obsidian_create(note_name, content):
+            cli_success = obsidian_create(note_name, content)
+            if not cli_success or not out_path.exists():
                 out_path.write_text(content)
 
             logger.info(f"Created session: {filename} ({len(content)} bytes)")
