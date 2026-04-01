@@ -41,5 +41,12 @@ MODEL = os.environ.get("ANAMNESIS_MODEL", "claude-opus-4-6")
 
 # --- Cron schedule ---
 
-DAILY_SUMMARY_HOUR = int(os.environ.get("ANAMNESIS_DAILY_HOUR", "20"))
-DAILY_SUMMARY_MINUTE = int(os.environ.get("ANAMNESIS_DAILY_MINUTE", "0"))
+try:
+    DAILY_SUMMARY_HOUR = int(os.environ.get("ANAMNESIS_DAILY_HOUR", "20"))
+except ValueError:
+    DAILY_SUMMARY_HOUR = 20
+
+try:
+    DAILY_SUMMARY_MINUTE = int(os.environ.get("ANAMNESIS_DAILY_MINUTE", "3"))
+except ValueError:
+    DAILY_SUMMARY_MINUTE = 3

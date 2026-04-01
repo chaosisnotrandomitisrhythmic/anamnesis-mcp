@@ -106,7 +106,7 @@ Works with any markdown viewer. If you use [Obsidian](https://obsidian.md/), poi
 
 Anamnesis includes an optional daily summary script — the third compression layer in the hierarchy:
 
-```
+```text
 Transcript (raw) → Session file (Opus summary) → Daily summary (residual symbols)
 ```
 
@@ -119,11 +119,12 @@ Instead of appending per-session blocks, a cron job synthesizes all sessions fro
 ```
 
 **Configuration:**
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ANAMNESIS_DAILY_DIR` | `<vault>/../Daily Logs` | Directory for daily summary files |
 | `ANAMNESIS_DAILY_HOUR` | `20` | Hour for cron schedule |
-| `ANAMNESIS_DAILY_MINUTE` | `0` | Minute for cron schedule |
+| `ANAMNESIS_DAILY_MINUTE` | `3` | Minute for cron schedule |
 
 You can also run it manually for any date: `uv run scripts/daily_summary.py 2026-03-31`
 
