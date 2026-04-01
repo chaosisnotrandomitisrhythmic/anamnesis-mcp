@@ -332,7 +332,11 @@ def main():
     if len(sys.argv) > 1:
         target_date = sys.argv[1]
         # Validate format
-        datetime.strptime(target_date, "%Y-%m-%d")
+        try:
+            datetime.strptime(target_date, "%Y-%m-%d")
+        except ValueError:
+            print(f"Invalid date format: '{target_date}'. Use YYYY-MM-DD")
+            sys.exit(1)
     else:
         target_date = datetime.now().strftime("%Y-%m-%d")
 
