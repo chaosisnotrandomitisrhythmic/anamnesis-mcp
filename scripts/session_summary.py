@@ -18,24 +18,27 @@ import logging
 import os
 import platform
 import re
-import shutil
 import socket
-import subprocess
 import sys
 import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+# Import shared daily note logic from the anamnesis package
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_REPO_ROOT / "src"))
+from anamnesis.daily_note import (
+    obsidian_cli_available,
+    obsidian_create,
+    format_daily_block,
+    append_to_daily_note,
+)
+
 VAULT_DIR = Path(
     os.environ.get("ANAMNESIS_VAULT", str(Path.home() / "Documents" / "Anamnesis"))
 )
-DAILY_LOG_DIR = Path(
-    os.environ.get("ANAMNESIS_DAILY_DIR", str(VAULT_DIR.parent / "Daily Logs"))
-)
 INDEX_FILE = VAULT_DIR / ".session-index"
 LOG_FILE = Path.home() / ".claude" / "scripts" / "session-summary.log"
-OBSIDIAN_CLI = shutil.which("obsidian") or "obsidian"
-WIKILINK_PREFIX = os.environ.get("ANAMNESIS_WIKILINK_PREFIX", VAULT_DIR.name + "/")
 
 logging.basicConfig(
     filename=str(LOG_FILE),
@@ -134,141 +137,6 @@ def get_api_key() -> str:
                 if m:
                     return m.group(1)
     return ""
-
-
-_cli_available: bool | None = None
-
-
-def obsidian_cli_available() -> bool:
-    """Check if Obsidian CLI is enabled (cached).
-
-    Note: `obsidian --version` returns exit code 0 even when CLI is disabled,
-    so we probe with `obsidian vault` which actually requires the CLI to be on.
-    """
-    global _cli_available
-    if _cli_available is None:
-        try:
-            result = subprocess.run(
-                [OBSIDIAN_CLI, "vault"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            _cli_available = result.returncode == 0 and "not enabled" not in result.stdout
-        except Exception:
-            _cli_available = False
-        log.info("Obsidian CLI available: %s", _cli_available)
-    return _cli_available
-
-
-def obsidian_create(name: str, content: str) -> bool:
-    """Create a new note via Obsidian CLI. Returns True on success."""
-    if not obsidian_cli_available():
-        return False
-    try:
-        result = subprocess.run(
-            [OBSIDIAN_CLI, "create", f"name={name}", f"content={content}", "silent"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0:
-            log.info("Created note via CLI: %s", name)
-            return True
-        log.warning("CLI create failed: %s", result.stderr)
-        return False
-    except Exception as e:
-        log.warning("CLI create error: %s", e)
-        return False
-
-
-def format_daily_block(
-    title: str,
-    summary: str,
-    done: str,
-    open_items: str,
-    cwd: str,
-    session_filename: str,
-    timestamp: str,
-) -> str:
-    """Format a session summary block for the daily note."""
-    time_str = timestamp
-    if " " in timestamp:
-        time_str = timestamp.split(" ", 1)[1]
-
-    link_name = session_filename.removesuffix(".md")
-    link = f"[[{WIKILINK_PREFIX}{link_name}|{title}]]"
-
-    lines = [
-        "---",
-        "",
-        f"### Claude Session ({time_str})",
-        "",
-        f"**{link}** — `{cwd}`",
-        "",
-    ]
-
-    if summary:
-        lines.append(summary)
-        lines.append("")
-
-    if done:
-        lines.append(f"**Done:** {done}")
-    if open_items:
-        lines.append(f"**Open:** {open_items}")
-
-    lines.append("")
-    return "\n".join(lines)
-
-
-def append_to_daily_note(
-    title: str,
-    summary: str,
-    done: str,
-    open_items: str,
-    cwd: str,
-    session_filename: str,
-    timestamp: str,
-) -> None:
-    """Append a session block to today's daily note."""
-    block = format_daily_block(
-        title=title,
-        summary=summary,
-        done=done,
-        open_items=open_items,
-        cwd=cwd,
-        session_filename=session_filename,
-        timestamp=timestamp,
-    )
-
-    if obsidian_cli_available():
-        try:
-            result = subprocess.run(
-                [OBSIDIAN_CLI, "daily:append", f"content={block}"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                log.info("Appended to daily note via CLI")
-                return
-            log.warning("CLI daily:append failed: %s", result.stderr)
-        except Exception as e:
-            log.warning("CLI daily:append error: %s", e)
-
-    # Fallback: raw file I/O
-    now = datetime.now()
-    daily_path = DAILY_LOG_DIR / str(now.year) / f"{now.month:02d}" / f"{now.strftime('%Y-%m-%d')}.md"
-    daily_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if not daily_path.exists():
-        header = f"# {now.strftime('%Y-%m-%d')} - Daily Log\n\n"
-        daily_path.write_text(header + block)
-        log.info("Created daily note with session block: %s", daily_path)
-    else:
-        with open(daily_path, "a") as f:
-            f.write("\n" + block)
-        log.info("Appended to daily note via file I/O: %s", daily_path)
 
 
 def call_api(system: str, user_content: str) -> str:
@@ -547,7 +415,8 @@ Generate the log entry."""
     is_new = not (existing_file and existing_file.exists())
     if is_new:
         note_name = f"{VAULT_DIR.name}/{out_path.stem}"
-        if not obsidian_create(note_name, updated):
+        cli_success = obsidian_create(note_name, updated)
+        if not cli_success or not out_path.exists():
             out_path.write_text(updated)
     else:
         out_path.write_text(updated)
