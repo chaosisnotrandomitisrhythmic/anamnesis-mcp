@@ -58,7 +58,9 @@ Add the SessionEnd hook to `~/.claude/settings.json`:
 |----------|---------|-------------|
 | `ANAMNESIS_VAULT` | `~/Documents/Anamnesis` | Directory where session files are stored |
 | `ANTHROPIC_API_KEY` | — | Required by the hook to summarize transcripts |
-| `ANAMNESIS_MODEL` | `claude-sonnet-4-6` | Model used for summaries |
+| `ANAMNESIS_MODEL` | `claude-opus-4-6` | Model used for summaries |
+| `ANAMNESIS_DAILY_DIR` | `<vault>/../Daily Logs` | Directory for daily note files |
+| `ANAMNESIS_WIKILINK_PREFIX` | `<vault dir name>/` | Prefix for wikilinks in daily notes (e.g. `Anamnesis/`) |
 
 Optionally, copy `examples/skill/SKILL.md` to `~/.claude/skills/anamnesis/SKILL.md` for a `/anamnesis` slash command that teaches Claude how to search and cross-reference sessions.
 
@@ -98,6 +100,18 @@ Summary paragraph describing the full arc of work.
 ```
 
 Works with any markdown viewer. If you use [Obsidian](https://obsidian.md/), point `ANAMNESIS_VAULT` at a folder inside your vault for graph view and sync.
+
+## Daily Notes
+
+Anamnesis can append session summaries to a daily note file, giving you a single view of all sessions for each day.
+
+**Configuration:**
+- `ANAMNESIS_DAILY_DIR` — directory for daily notes (default: `<vault>/../Daily Logs`)
+- `ANAMNESIS_WIKILINK_PREFIX` — folder prefix for wikilinks to session files (default: vault directory name + `/`)
+- Works with the [Obsidian CLI](https://github.com/Obsidian-CLI/obsidian-cli) if installed, falls back to raw file I/O
+
+**Daily note format:**
+Each session gets a block appended to the day's file with a wikilink to the full session log, summary, done items, and open items. Files are organized as `YYYY/MM/YYYY-MM-DD.md` inside the daily directory.
 
 ## Uninstallation
 
