@@ -20,13 +20,13 @@ import platform
 import re
 import socket
 import sys
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-# Import shared paths from the anamnesis package
+# Import shared paths and API from the anamnesis package
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from anamnesis.paths import VAULT_DIR, INDEX_FILE, SESSION_SUMMARY_LOG, MODEL
+from anamnesis.paths import VAULT_DIR, INDEX_FILE, SESSION_SUMMARY_LOG
+from anamnesis.api import call_api
 
 logging.basicConfig(
     filename=str(SESSION_SUMMARY_LOG),
@@ -110,64 +110,6 @@ def write_index(index: dict):
     for sid, info in index.items():
         lines.append(f"{sid}|{info['file']}|{info['offset']}")
     INDEX_FILE.write_text("\n".join(lines) + "\n")
-
-
-def get_api_key() -> str:
-    """Get Anthropic API key from env or shell rc files (zsh + bash)."""
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if key:
-        return key
-    for rc in (".zshrc", ".bashrc", ".bash_profile", ".profile"):
-        rc_path = Path.home() / rc
-        if rc_path.exists():
-            for line in rc_path.read_text().splitlines():
-                m = re.search(r'ANTHROPIC_API_KEY=["\']?([^"\'\s]+)', line)
-                if m:
-                    return m.group(1)
-    return ""
-
-
-def call_api(system: str, user_content: str) -> str:
-    """Call Anthropic Messages API with adaptive thinking."""
-    api_key = get_api_key()
-    if not api_key:
-        raise RuntimeError("No ANTHROPIC_API_KEY found")
-
-    payload = json.dumps({
-        "model": MODEL,
-        "max_tokens": 16000,
-        "thinking": {"type": "adaptive"},
-        "system": system,
-        "messages": [{"role": "user", "content": user_content}],
-    }).encode()
-
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-    )
-
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
-
-    # Extract text blocks (skip thinking blocks)
-    texts = []
-    for block in data.get("content", []):
-        if block.get("type") == "text":
-            texts.append(block["text"])
-
-    usage = data.get("usage", {})
-    log.info(
-        "API call: model=%s input=%s output=%s",
-        MODEL,
-        usage.get("input_tokens", "?"),
-        usage.get("output_tokens", "?"),
-    )
-    return "\n".join(texts)
 
 
 def build_frontmatter(session_id: str, cwd: str, host: str, date: str) -> str:

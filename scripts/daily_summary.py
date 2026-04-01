@@ -19,18 +19,16 @@ Usage:
   python daily_summary.py 2026-03-31       # summarize a specific date
 """
 
-import json
 import logging
-import os
 import re
 import sys
-import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-# Import shared paths from the anamnesis package
+# Import shared paths and API from the anamnesis package
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from anamnesis.paths import VAULT_DIR, DAILY_LOG_DIR, DAILY_SUMMARY_LOG, MODEL
+from anamnesis.paths import VAULT_DIR, DAILY_LOG_DIR, DAILY_SUMMARY_LOG
+from anamnesis.api import call_api
 
 logging.basicConfig(
     filename=str(DAILY_SUMMARY_LOG),
@@ -39,21 +37,6 @@ logging.basicConfig(
     level=logging.INFO,
 )
 log = logging.getLogger(__name__)
-
-
-def get_api_key() -> str:
-    """Get Anthropic API key from env or shell rc files."""
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if key:
-        return key
-    for rc in (".zshrc", ".bashrc", ".bash_profile", ".profile"):
-        rc_path = Path.home() / rc
-        if rc_path.exists():
-            for line in rc_path.read_text().splitlines():
-                m = re.search(r'ANTHROPIC_API_KEY=["\']?([^"\'\s]+)', line)
-                if m:
-                    return m.group(1)
-    return ""
 
 
 def strip_frontmatter(text: str) -> str:
@@ -168,45 +151,21 @@ def collect_sessions(target_date: str) -> list[dict]:
     return sessions
 
 
-def call_api(system: str, user_content: str) -> str:
-    """Call Anthropic Messages API with Opus 4.6 + adaptive thinking."""
-    api_key = get_api_key()
-    if not api_key:
-        raise RuntimeError("No ANTHROPIC_API_KEY found")
+def load_previous_summary(target_date: str) -> str:
+    """Load yesterday's daily summary for continuity context."""
+    dt = datetime.strptime(target_date, "%Y-%m-%d")
+    yesterday = (dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    yd = datetime.strptime(yesterday, "%Y-%m-%d")
+    prev_path = DAILY_LOG_DIR / str(yd.year) / f"{yd.month:02d}" / f"{yesterday}.md"
 
-    payload = json.dumps({
-        "model": MODEL,
-        "max_tokens": 16000,
-        "thinking": {"type": "adaptive"},
-        "system": system,
-        "messages": [{"role": "user", "content": user_content}],
-    }).encode()
+    if not prev_path.exists():
+        return ""
 
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-    )
-
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read())
-
-    texts = []
-    for block in data.get("content", []):
-        if block.get("type") == "text":
-            texts.append(block["text"])
-
-    usage = data.get("usage", {})
-    log.info(
-        "API call: input=%s output=%s",
-        usage.get("input_tokens", "?"),
-        usage.get("output_tokens", "?"),
-    )
-    return "\n".join(texts)
+    content = prev_path.read_text()
+    marker = "<!-- daily-summary -->"
+    if marker in content:
+        return content[content.index(marker) + len(marker):].strip()
+    return content.strip()
 
 
 # --- The system prompt: the soul of the compression layer ---
@@ -230,8 +189,8 @@ MEANT — the emergent pattern that only becomes visible when you see all
 sessions together. Connections the user didn't notice in the moment. Threads
 that ran through seemingly unrelated work. The arc of the day.
 
-You receive all session summaries and log entries from a single day. Produce
-a daily note that:
+You receive all session summaries and log entries from a single day. You may
+also receive yesterday's summary for continuity. Produce a daily note that:
 
 1. Opens with a **cohesive narrative paragraph** (3-6 sentences) — the day's
    shape. Not a list of sessions. A synthesis. What was this day *about*,
@@ -243,9 +202,12 @@ a daily note that:
    Name each thread and explain how it manifested across sessions.
    Use [[wikilinks]] to link back to session files.
 
-3. Ends with **Open Loops** — the Zeigarnik residue. Unfinished items that
-   carry forward. Not a dump of every Open item from every session — only
-   the ones that matter tomorrow. The ones that will nag.
+3. Ends with **What Carries Forward** — the Zeigarnik residue. Unfinished
+   items that carry forward. Not a dump of every Open item from every
+   session — only the ones that matter tomorrow. The ones that will nag.
+
+4. Close with a single **Closing read** line — an energy signature for the
+   day in ≤10 words. Not a summary. A vibe. The emotional residue.
 
 Format:
 
@@ -260,8 +222,11 @@ Format:
 ### [Thread Name]
 [...]
 
-## Open Loops
+## What Carries Forward
 - [Consolidated open items that carry real weight into tomorrow]
+
+---
+*Closing read: [energy signature in ≤10 words]*
 </daily_summary>
 
 Rules:
@@ -270,14 +235,18 @@ Rules:
 - [[Wikilinks]] use the format: [[Claude Sessions/filename-without-extension|Display Text]]
 - The narrative paragraph is the most important part. It's what the user will
   read when they look back at this day in six months.
+- If yesterday's summary is provided, note any threads that continue or resolve.
 - This is lossy compression by design. Let details die. Keep the shape.
 - Output ONLY the <daily_summary> tags, nothing else."""
 
 
-def build_user_prompt(target_date: str, sessions: list[dict]) -> str:
+def build_user_prompt(target_date: str, sessions: list[dict], previous_summary: str = "") -> str:
     """Build the user prompt with all session data."""
     parts = [f"<date>{target_date}</date>\n"]
     parts.append(f"<session_count>{len(sessions)}</session_count>\n")
+
+    if previous_summary:
+        parts.append(f"<previous_summary>\n{previous_summary}\n</previous_summary>\n")
 
     for i, s in enumerate(sessions, 1):
         link = s["filename"].removesuffix(".md")
@@ -294,35 +263,14 @@ def build_user_prompt(target_date: str, sessions: list[dict]) -> str:
 
 
 def write_daily_note(target_date: str, content: str) -> Path:
-    """Write the daily summary to the daily log directory."""
+    """Write the daily summary to the Scanner Daybook."""
     dt = datetime.strptime(target_date, "%Y-%m-%d")
     daily_path = DAILY_LOG_DIR / str(dt.year) / f"{dt.month:02d}" / f"{target_date}.md"
     daily_path.parent.mkdir(parents=True, exist_ok=True)
 
     header = f"# {target_date} — Daily Summary\n\n"
-
-    if daily_path.exists():
-        existing = daily_path.read_text()
-        # If there's already a daily summary section, replace it
-        # (idempotent re-runs)
-        marker = "<!-- daily-summary -->"
-        if marker in existing:
-            before = existing[:existing.index(marker)]
-            daily_path.write_text(
-                before.rstrip() + "\n\n"
-                + marker + "\n\n"
-                + content + "\n"
-            )
-        else:
-            # Append to existing daily note (might have manual entries)
-            daily_path.write_text(
-                existing.rstrip() + "\n\n"
-                + marker + "\n\n"
-                + content + "\n"
-            )
-    else:
-        marker = "<!-- daily-summary -->"
-        daily_path.write_text(header + marker + "\n\n" + content + "\n")
+    marker = "<!-- daily-summary -->\n\n"
+    daily_path.write_text(header + marker + content + "\n")
 
     return daily_path
 
@@ -350,8 +298,13 @@ def main():
 
     log.info("Found %d sessions for %s", len(sessions), target_date)
 
+    # Load previous day's summary for continuity
+    previous_summary = load_previous_summary(target_date)
+    if previous_summary:
+        log.info("Loaded previous summary (%d bytes)", len(previous_summary))
+
     # Build prompt and call API
-    user_content = build_user_prompt(target_date, sessions)
+    user_content = build_user_prompt(target_date, sessions, previous_summary)
     result = call_api(SYSTEM_PROMPT, user_content)
 
     if not result.strip():
