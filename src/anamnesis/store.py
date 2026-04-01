@@ -13,6 +13,7 @@ from typing import Optional
 import frontmatter
 
 from .models import Session, LogEntry
+from .daily_note import append_to_daily_note, obsidian_create
 from . import get_logger
 
 logger = get_logger(__name__)
@@ -434,6 +435,20 @@ class VaultStore:
             updated = fm_block + "\n".join(sections)
             existing_path.write_text(updated)
             logger.info(f"Updated session: {existing_path.name} ({len(updated)} bytes)")
+
+            try:
+                append_to_daily_note(
+                    title=title_line.lstrip("# ").strip(),
+                    summary=summary,
+                    done=done,
+                    open_items=open_items,
+                    cwd=cwd,
+                    session_filename=existing_path.name,
+                    timestamp=timestamp,
+                )
+            except Exception as e:
+                logger.warning(f"Daily note append failed: {e}")
+
             return {
                 "filename": existing_path.name,
                 "session_id": session_id,
@@ -451,7 +466,7 @@ class VaultStore:
                 f'date: "{date}"\n'
                 f'host: "{host}"\n'
                 f'cwd: "{cwd}"\n'
-                f"tags: {json.dumps(tags or [])}\n"
+                f"tags: {tags or []}\n"
                 "---\n\n"
             )
 
@@ -484,8 +499,27 @@ class VaultStore:
             filename = f"{now.strftime('%Y-%m-%d_%H%M')}_{slug}.md"
 
             out_path = self._vault_path / filename
-            out_path.write_text(content)
+
+            # Try Obsidian CLI for immediate indexing, fall back to raw I/O
+            note_name = f"{self._vault_path.name}/{filename.removesuffix('.md')}"
+            if not obsidian_create(note_name, content):
+                out_path.write_text(content)
+
             logger.info(f"Created session: {filename} ({len(content)} bytes)")
+
+            try:
+                append_to_daily_note(
+                    title=title,
+                    summary=summary,
+                    done=done,
+                    open_items=open_items,
+                    cwd=cwd,
+                    session_filename=filename,
+                    timestamp=timestamp,
+                )
+            except Exception as e:
+                logger.warning(f"Daily note append failed: {e}")
+
             return {"filename": filename, "session_id": session_id, "created": True}
 
     def _find_session_file(self, session_id: str) -> Path | None:
@@ -497,8 +531,7 @@ class VaultStore:
                     head = f.read(500)
                 if f'session_id: "{session_id}"' in head:
                     return path
-            except Exception as e:
-                logger.debug(f"Could not read {path.name}: {e}")
+            except Exception:
                 continue
         return None
 
